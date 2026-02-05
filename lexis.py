@@ -8,7 +8,13 @@ from google import genai
 from google.genai import types
 
 # --- CONFIGURAÇÃO DA IA (ATUALIZADA) ---
-client = genai.Client(api_key="AIzaSyCrX5oG5ixYBTWE-8TquRS89zH42IijVtI")
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    print("ERRO: A variável de ambiente GEMINI_API_KEY não está definida.")
+    print("Por favor, defina-a com: export GEMINI_API_KEY='sua_chave_aqui'")
+    exit(1)
+
+client = genai.Client(api_key=api_key)
 MODEL_ID = 'gemini-2.5-flash'
 
 def get_ai_summary(text):

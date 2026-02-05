@@ -5,10 +5,15 @@ from google import genai
 import time
 
 # Configuração da API
-client = genai.Client(api_key="AIzaSyCrX5oG5ixYBTWE-8TquRS89zH42IijVtI")
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    print("ERRO: A variável de ambiente GEMINI_API_KEY não está definida.")
+    exit(1)
+
+client = genai.Client(api_key=api_key)
 MODEL_ID = 'gemini-2.5-flash'
 
-# Configurações de Limite (10MB é o ponto ideal para performance)
+# Configurações de Limite (2MB é o ponto ideal para performance de texto puro)
 MAX_FILE_SIZE_MB = 2 
 MAX_CHARS = MAX_FILE_SIZE_MB * 1024 * 1024 
 
