@@ -1,5 +1,7 @@
 # Lexis - Processamento de Legendas com IA
 
+**Objetivo**: Subir arquivos no NotebookLM para estudar conteudo de um canal do YouTube sem perder informações.
+
 Este projeto contém ferramentas para processar, resumir e consolidar legendas de vídeos (SRT) utilizando a API do Google Gemini.
 
 ## Ferramentas
