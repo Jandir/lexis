@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 import os
 import re
+import shutil
 from google import genai
 import time
+
+# Pasta de Arquivo morto das .srt originais baixadas do Youtube
+# O usuário fica responsável por apagar essa pasta quando quiser.
+ARCHIVE_DIR_NAME = "archive"
 
 # Configuração da API
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -39,7 +44,7 @@ def get_summary(text):
 
 def save_volume(channel, volume, content, raw_text):
     summary = get_summary(raw_text)
-    output_name = f"CONSOLIDADO_{channel}_VOL_{volume}.txt"
+    output_name = f"CONSOLIDADO_{channel}_VOL_{volume:03d}.txt"
     with open(output_name, 'w', encoding='utf-8') as out:
         out.write(f"CANAL: {channel} | VOLUME: {volume}\n")
         out.write(f"RESUMO DO VOLUME:\n{summary}\n\n")
@@ -60,8 +65,16 @@ def process_channel(channel_path, channel_name):
     
     print(f"--- Processando Canal: {channel_name} ---")
 
+    # Garante que a pasta de archive existe
+    archive_path = os.path.join(channel_path, ARCHIVE_DIR_NAME)
+    if not os.path.exists(archive_path):
+        os.makedirs(archive_path)
+
+    pending_archive = []
+
     for f in files:
-        with open(os.path.join(channel_path, f), 'r', encoding='utf-8') as file:
+        full_path = os.path.join(channel_path, f)
+        with open(full_path, 'r', encoding='utf-8') as file:
             processed, raw = process_srt(file.read(), f)
             
             # Verifica se a adição deste vídeo estoura o limite do volume
@@ -69,6 +82,15 @@ def process_channel(channel_path, channel_name):
             # Isso assegura que um vídeo nunca será "quebrado" ao meio; ele vai inteiro para o próximo volume se não couber no atual
             if current_content and (len(current_content) + len(processed) > MAX_CHARS):
                 save_volume(channel_name, volume, current_content, current_raw)
+                # Move os arquivos que foram salvos neste volume para o archive
+                for pending in pending_archive:
+                    try:
+                        shutil.move(pending, os.path.join(archive_path, os.path.basename(pending)))
+                        print(f"  - Arquivado: {pending}")
+                    except Exception as e:
+                        print(f"  ! Erro ao arquivar {pending}: {e}")
+                pending_archive = []
+                
                 volume += 1
                 current_content = ""
                 current_raw = ""
@@ -76,11 +98,19 @@ def process_channel(channel_path, channel_name):
             
             current_content += processed
             current_raw += raw + " "
-            print(f"  > Adicionado: {f}")
+            pending_archive.append(full_path)
+            print(f"  > Processado (pendente archive): {f}")
 
     # Salva o último volume (ou o único)
     if current_content:
         save_volume(channel_name, volume, current_content, current_raw)
+        # Archive os arquivos restantes
+        for pending in pending_archive:
+            try:
+                shutil.move(pending, os.path.join(archive_path, os.path.basename(pending)))
+                print(f"  - Arquivado: {pending}")
+            except Exception as e:
+                print(f"  ! Erro ao arquivar {pending}: {e}")
 
 def consolidate_by_channel(base_path):
     # 1. Process files in the current directory (base_path)
@@ -91,7 +121,8 @@ def consolidate_by_channel(base_path):
         process_channel(base_path, current_dir_name)
 
     # 2. Process subdirectories
-    dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
+    dirs = [d for d in os.listdir(base_path) 
+            if os.path.isdir(os.path.join(base_path, d)) and d != ARCHIVE_DIR_NAME]
     for d in dirs:
         process_channel(os.path.join(base_path, d), d)
 

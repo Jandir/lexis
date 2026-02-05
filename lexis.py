@@ -3,6 +3,7 @@ import re
 import time
 import json
 import glob
+import shutil
 # Removed deprecated import
 from google import genai
 from google.genai import types
@@ -166,6 +167,15 @@ def main():
                 f_out.write(final_content)
                 
             print(f"Salvo: {output_filename}")
+
+            # Arquivar o arquivo original
+            archive_dir = os.path.join(current_dir, "arquive")
+            os.makedirs(archive_dir, exist_ok=True)
+            try:
+                shutil.move(filename, os.path.join(archive_dir, filename))
+                print(f"Arquivado: {filename} -> {archive_dir}")
+            except Exception as e:
+                print(f"Erro ao arquivar {filename}: {e}")
             
             # Delay
             time.sleep(2)
