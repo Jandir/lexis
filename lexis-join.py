@@ -2,6 +2,11 @@
 import os
 import re
 import shutil
+
+# Pasta de Arquivo morto das .srt originais baixadas do Youtube
+# O usuário fica responsável por apagar essa pasta quando quiser.
+ARCHIVE_DIR_NAME = "archive"
+
 # Configurações de Limite (2MB é o ponto ideal para performance de texto puro)
 MAX_FILE_SIZE_MB = 2 
 MAX_CHARS = MAX_FILE_SIZE_MB * 1024 * 1024 
@@ -64,13 +69,6 @@ def process_channel(channel_path, channel_name):
     
     print(f"--- Processando Canal: {channel_name} ---")
 
-    # Garante que a pasta de archive existe
-    archive_path = os.path.join(channel_path, ARCHIVE_DIR_NAME)
-    if not os.path.exists(archive_path):
-        os.makedirs(archive_path)
-
-    pending_archive = []
-
     for f in files:
         full_path = os.path.join(channel_path, f)
         with open(full_path, 'r', encoding='utf-8') as file:
@@ -82,8 +80,8 @@ def process_channel(channel_path, channel_name):
             # 1. Adiciona o conteúdo ao volume atual
             current_content += processed
             current_summaries_list.append(formatted_summary)
-            pending_archive.append(full_path)
-            print(f"  > Adicionado (pendente archive): {f}")
+            # pending_archive.append(full_path) # Archiving removed
+            print(f"  > Adicionado: {f}")
 
             # 2. Verifica se estourou o limite APÓS adicionar
             # Se estourou, salva este volume e limpa para o próximo
@@ -94,14 +92,7 @@ def process_channel(channel_path, channel_name):
                 final_summary_block = "\n\n".join(current_summaries_list)
                 save_volume(channel_name, volume, current_content, final_summary_block)
                 
-                # Move os arquivos que foram salvos neste volume para o archive
-                for pending in pending_archive:
-                    try:
-                        shutil.move(pending, os.path.join(archive_path, os.path.basename(pending)))
-                        print(f"  - Arquivado: {pending}")
-                    except Exception as e:
-                        print(f"  ! Erro ao arquivar {pending}: {e}")
-                pending_archive = []
+                # pending_archive block removed
                 
                 volume += 1
                 current_content = ""
@@ -112,13 +103,7 @@ def process_channel(channel_path, channel_name):
     if current_content:
         final_summary_block = "\n\n".join(current_summaries_list)
         save_volume(channel_name, volume, current_content, final_summary_block)
-        # Archive os arquivos restantes
-        for pending in pending_archive:
-            try:
-                shutil.move(pending, os.path.join(archive_path, os.path.basename(pending)))
-                print(f"  - Arquivado: {pending}")
-            except Exception as e:
-                print(f"  ! Erro ao arquivar {pending}: {e}")
+        # pending_archive block removed
 
 def consolidate_by_channel(base_path):
     # 1. Process files in the current directory (base_path)

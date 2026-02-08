@@ -1,29 +1,36 @@
 # Lexis - Processamento de Legendas com IA
 
-**Objetivo**: Subir arquivos no NotebookLM para estudar conteudo de um canal do YouTube sem perder informações.
-
-Este projeto contém ferramentas para processar, resumir e consolidar legendas de vídeos (SRT) utilizando a API do Google Gemini.
+**Objetivo**: Preparar e consolidar transcrições de vídeos do YouTube para estudo e RAG (Retrieval-Augmented Generation) no NotebookLM, sem perder informações.
 
 ## Ferramentas
 
-### 1. `lexis.py`
-Processa arquivos `.srt` individualmente.
-- Gera um resumo executivo usando IA.
-- Extrai metadados de arquivos `.info.json` (se existirem).
-- Gera um arquivo `.txt` formatado contendo metadados, resumo e a transcrição limpa.
+### 1. `lexis.py` (Online 🌐)
+Processa arquivos `.srt` individualmente usando a IA do Google Gemini.
 
-### 2. `lexis-join.py`
-Consolida múltiplos arquivos `.srt` em "volumes" de texto.
-- Útil para criar datasets grandes para RAG (Retrieval-Augmented Generation).
-- Agrupa vídeos até atingir um limite de tamanho (configurável, padrão 2MB).
-- Garante que vídeos não sejam divididos entre volumes.
-- Gera um resumo do volume usando IA.
+**Funcionalidades:**
+- ✨ **Resumo via IA**: Gera um resumo executivo focado em conceitos-chave.
+- 🧹 **Limpeza Inteligente**: Remove timestamps e formatação, mantendo o texto limpo.
+- 🎨 **Interface Rica**: Saída colorida no terminal para fácil acompanhamento.
+- 🔒 **Segurança**:
+    - **Processamento em Lote**: Processa todos os arquivos primeiro.
+    - **Arquivamento Seguro**: Move os `.srt` originais para a pasta `archive` **apenas se** o processamento for bem-sucedido e o arquivo `.txt` final existir.
+- 🤖 **Metadados**: Tenta extrair ID e Título de arquivos `.info.json` (se existirem).
+
+### 2. `lexis-join.py` (Offline ⚡)
+Consolida múltiplos arquivos `.txt` (gerados pelo `lexis.py`) em "volumes" grandes.
+
+**Funcionalidades:**
+- 🚀 **100% Offline**: Não consome API nem requer internet. Reutiliza os resumos já gerados pelo `lexis.py`.
+- 📚 **Volumes Inteligentes**: Agrupa vídeos até atingir ~2MB (ponto ideal para LLMs).
+- 🧠 **Coletânea de Resumos**: O cabeçalho de cada volume contém todos os resumos dos vídeos incluídos nele.
+- 🛡️ **Integridade**: Garante que um vídeo nunca seja dividido pela metade entre dois volumes.
+- 📂 **Preservação**: Não move nem apaga seus arquivos `.txt` originais.
 
 ## Configuração
 
 ### Pré-requisitos
 - Python 3.8+
-- Chave de API do Google Gemini
+- Chave de API do Google Gemini (Apenas para o `lexis.py`)
 
 ### Instalação
 
@@ -38,39 +45,54 @@ Consolida múltiplos arquivos `.srt` em "volumes" de texto.
    pip install -r requirements.txt
    ```
 
-### Variável de Ambiente
-Para utilizar os scripts, você **PRECISA** definir a variável de ambiente `GEMINI_API_KEY` com sua chave da API.
+### Configuração da API
+Para usar o `lexis.py`, você precisa de uma API Key do Google Gemini.
+O script procura automaticamente por um arquivo `.env` **na mesma pasta do script**.
 
-No terminal:
-```bash
-export GEMINI_API_KEY='sua_chave_aqui'
-```
-
-Para tornar permanente, adicione ao seu `~/.zshrc` ou `~/.bashrc`.
+1. Crie um arquivo chamado `.env` dentro da pasta `lexis/`.
+2. Adicione sua chave nele:
+   ```env
+   GEMINI_API_KEY=sua_chave_aqui_xyz
+   ```
 
 ## Uso
 
-### Processar arquivos individuais
-Execute o script na pasta onde estão os arquivos `.srt`:
+### Passo 1: Processar Legendas (`lexis.py`)
+Navegue até a pasta onde estão seus arquivos `.srt` e rode:
+
 ```bash
-python lexis.py
+python /caminho/para/lexis.py
 ```
 
-### Consolidar legendas
-Execute o script para gerar volumes consolidados:
-```bash
-python lexis-join.py
-```
-O script processará arquivos `.srt` na pasta atual e em subdiretórios.
+O script irá:
+1. Encontrar todos os `.srt`.
+2. Gerar `.txt` com Resumo + Transcrição.
+3. Mover os `.srt` processados para uma pasta `archive/`.
 
-## Estrutura de Arquivos Esperada
+### Passo 2: Consolidar Volumes (`lexis-join.py`)
+Para juntar os textos em grandes volumes para o NotebookLM:
+
+```bash
+python /caminho/para/lexis-join.py
+```
+
+O script irá:
+1. Varrer a pasta atual e subpastas.
+2. Criar arquivos `CONSOLIDADO_NomeDoCanal_VOL_001.txt`, `VOL_002.txt`, etc.
+3. Manter seus arquivos `.txt` originais intactos.
+
+## Estrutura de Arquivos
+
 ```
 .
-├── lexis.py
-├── lexis-join.py
-├── requirements.txt
-├── .venv/
-├── video1.srt
-├── video1.info.json (opcional)
-└── ...
+├── .env                  # Sua chave de API
+├── requirements.txt      # Dependências
+├── lexis.py              # Script de processamento (IA)
+├── lexis-join.py         # Script de consolidação (Offline)
+└── (Pasta dos Vídeos)
+    ├── video1.srt
+    ├── video1.info.json
+    ├── video1.txt        # Gerado pelo lexis
+    └── archive/          # Onde ficam os .srt originais
+        └── video1.srt
 ```

@@ -157,14 +157,12 @@ def main():
 
 def process_file(filename, current_dir):
     """Processa um único arquivo SRT. Função isolada para rodar em thread."""
-    print(f"{Colors.CYAN}\n--- Iniciando: {filename} ---{Colors.ENDC}")
-    
     # Define nome de saída antecipadamente para verificar existência
     output_filename = os.path.splitext(filename)[0] + ".txt"
     
     if os.path.exists(output_filename):
-        print(f"{Colors.WARNING}Skipping: {filename} -> {output_filename} já existe.{Colors.ENDC}")
-        return
+        print(f"{Colors.WARNING}⚠ [SKIP] {filename} -> {output_filename} já existe.{Colors.ENDC}")
+        return filename, False
 
     try:
         success = False # Flag de controle
@@ -175,8 +173,8 @@ def process_file(filename, current_dir):
         _, clean_full_text = process_srt_content(raw_content)
         
         if not clean_full_text.strip():
-            print(f"{Colors.WARNING}Aviso: Arquivo {filename} resultou em texto vazio. Pulando.{Colors.ENDC}")
-            return
+            print(f"{Colors.WARNING}⚠ [VAZIO] {filename} resultou em texto vazio.{Colors.ENDC}")
+            return filename, False
 
         # Obtém metadados
         meta = get_metadata(filename)
@@ -194,7 +192,7 @@ def process_file(filename, current_dir):
         # Para garantir que ele possa tentar de novo o resumo, NÃO vamos arquivar.
         
         if not summary:
-             print(f"{Colors.WARNING}Atenção: Resumo não gerado para {filename}. O arquivo TXT será salvo, mas o SRT não será arquivado.{Colors.ENDC}")
+             print(f"{Colors.WARNING}⚠ [SEM RESUMO] {filename} -> Salvo (SRT mantido).{Colors.ENDC}")
              # success continua False
         else:
              success = True
@@ -219,22 +217,13 @@ def process_file(filename, current_dir):
         with open(output_filename, 'w', encoding='utf-8') as f_out:
             f_out.write(final_content)
             
-        print(f"{Colors.GREEN}Salvo: {output_filename}{Colors.ENDC}")
+        print(f"{Colors.GREEN}✓ [OK] {filename} -> {output_filename}{Colors.ENDC}")
 
-        # Arquivar o arquivo original APENAS se houve sucesso total
-        if success:
-            archive_dir = os.path.join(current_dir, "archive")
-            os.makedirs(archive_dir, exist_ok=True)
-            try:
-                shutil.move(filename, os.path.join(archive_dir, filename))
-                print(f"{Colors.GREEN}Arquivado: {filename} -> {archive_dir}{Colors.ENDC}")
-            except Exception as e:
-                print(f"{Colors.FAIL}Erro ao arquivar {filename}: {e}{Colors.ENDC}")
-        else:
-             print(f"{Colors.WARNING}Mantendo original {filename} na pasta (processamento incompleto ou erro na API).{Colors.ENDC}")
+        return filename, success
             
     except Exception as e:
-        print(f"{Colors.FAIL}ERRO FATAL ao processar {filename}: {e}{Colors.ENDC}")
+        print(f"{Colors.FAIL}✖ [ERRO] {filename}: {e}{Colors.ENDC}")
+        return filename, False
 
 def main():
     # Define o diretório de trabalho como o diretório atual
@@ -250,19 +239,45 @@ def main():
 
     print(f"{Colors.BLUE}Encontrados {len(srt_files)} arquivos .srt. Iniciando processamento paralelo (max 5 threads)...{Colors.ENDC}")
 
+    success_files = []
+    
     # Utiliza ThreadPoolExecutor para processar arquivos em paralelo
     # Isso acelera drasticamente pois as chamadas de API são I/O bound
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # Mapeia a função process_file para cada arquivo na lista
-        # Usamos lambda ou partial para passar o current_dir se necessário, ou passamos direto no submit
         futures = [executor.submit(process_file, filename, current_dir) for filename in srt_files]
         
-        # Aguarda conclusão (opcional, para print final)
+        # Aguarda conclusão e coleta resultados
         for future in concurrent.futures.as_completed(futures):
             try:
-                future.result()
+                fname, success = future.result()
+                if success:
+                    success_files.append(fname)
             except Exception as e:
                 print(f"{Colors.FAIL}Erro na thread: {e}{Colors.ENDC}")
+
+    print(f"{Colors.GREEN}\n--- Processamento concluído. Iniciando Arquivamento ---{Colors.ENDC}")
+    
+    # Arquivamento em lote
+    if success_files:
+        archive_dir = os.path.join(current_dir, "archive")
+        os.makedirs(archive_dir, exist_ok=True)
+        print(f"{Colors.BLUE}Arquivando {len(success_files)} arquivos com sucesso...{Colors.ENDC}")
+        
+        for filename in success_files:
+             # Safety check: ensure .txt exists before archiving .srt
+             txt_filename = os.path.splitext(filename)[0] + ".txt"
+             if not os.path.exists(txt_filename):
+                 print(f"{Colors.FAIL}CRÍTICO: .txt não encontrado para {filename}. Não arquivando.{Colors.ENDC}")
+                 continue
+
+             try:
+                shutil.move(filename, os.path.join(archive_dir, filename))
+                print(f"{Colors.GREEN}Arquivado: {filename}{Colors.ENDC}")
+             except Exception as e:
+                print(f"{Colors.FAIL}Erro ao arquivar {filename}: {e}{Colors.ENDC}")
+    else:
+        print(f"{Colors.WARNING}Nenhum arquivo elegível para arquivamento.{Colors.ENDC}")
 
     print(f"{Colors.GREEN}\n--- Processamento concluído ---{Colors.ENDC}")
     print(f"{Colors.BLUE}Modelo utilizado: {Colors.BOLD}{MODEL_ID}{Colors.ENDC}")
