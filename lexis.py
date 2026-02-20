@@ -116,18 +116,29 @@ def get_metadata(srt_filename):
     """
     base_name = os.path.splitext(srt_filename)[0]
     
-    # Tenta encontrar o .info.json (às vezes tem sufixos de língua como .en.srt -> .en.info.json ou apenas .info.json)
-    # Assumindo que o json tem o mesmo prefixo base
-    # Ex: video.srt -> video.info.json
-    # Ex: video.en.srt -> video.info.json (mais complexo, vamos tentar o exato primeiro)
+    # Lista de candidatos
+    candidates = [base_name + ".info.json"]
     
-    candidates = [
-        base_name + ".info.json",
-        base_name.rsplit('.', 1)[0] + ".info.json" if '.' in base_name else None
-    ]
+    # Adiciona variações removendo sufixos após pontos e hífens
+    # Útil para video.pt.srt -> tenta video.info.json E folder-id-lang.srt -> folder-id.info.json
+    temp_name = base_name
+    while '.' in temp_name:
+        temp_name = temp_name.rsplit('.', 1)[0]
+        if temp_name:
+            candidates.append(temp_name + ".info.json")
+
+    # Reseta para base_name para tentar variações por hífen
+    temp_name = base_name
+    while '-' in temp_name:
+        temp_name = temp_name.rsplit('-', 1)[0]
+        if temp_name:
+             candidates.append(temp_name + ".info.json")
     
+    # Remove duplicatas preservando ordem
+    candidates = list(dict.fromkeys(candidates))
+
     for json_path in candidates:
-        if json_path and os.path.exists(json_path):
+        if os.path.exists(json_path):
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -139,6 +150,7 @@ def get_metadata(srt_filename):
             except Exception as e:
                 print(f"Erro ao ler JSON {json_path}: {e}")
     
+    print(f"⚠ Aviso: Nenhum metadata encontrado para {srt_filename}. Tentado: {candidates}")
     return {"date": "Desconhecida", "title": base_name, "id": "N/A"}
 
 def main():
@@ -157,52 +169,36 @@ def main():
 
 def process_file(filename, current_dir):
     """Processa um único arquivo SRT. Função isolada para rodar em thread."""
-    # Define nome de saída antecipadamente para verificar existência
     output_filename = os.path.splitext(filename)[0] + ".txt"
     
     if os.path.exists(output_filename):
-        print(f"{Colors.WARNING}⚠ [SKIP] {filename} -> {output_filename} já existe.{Colors.ENDC}")
-        return filename, False
+        msg = f"{Colors.WARNING}⚠ [SKIP] {filename} -> {output_filename} já existe.{Colors.ENDC}"
+        return filename, False, msg
 
     try:
-        success = False # Flag de controle
+        success = False
         with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
             raw_content = f.read()
         
-        # Limpa o texto
         _, clean_full_text = process_srt_content(raw_content)
         
         if not clean_full_text.strip():
-            print(f"{Colors.WARNING}⚠ [VAZIO] {filename} resultou em texto vazio.{Colors.ENDC}")
-            return filename, False
+            msg = f"{Colors.WARNING}⚠ [VAZIO] {filename} resultou em texto vazio.{Colors.ENDC}"
+            return filename, False, msg
 
-        # Obtém metadados
         meta = get_metadata(filename)
-        
-        # Gera resumo (Gemini)
-        # print(f"Gerando resumo para: {filename}...") 
         summary = get_ai_summary(clean_full_text)
         
-        # Se o resumo veio vazio, significa erro na API. 
-        # Decisão: Ainda salvamos o arquivo TXT (pois tem a transcrição), 
-        # mas NÃO marcaremos success=True para não arquivar o original e permitir retry do resumo depois?
-        # OU salvamos sem resumo e consideramos sucesso parcial?
-        # O usuário pediu: "Se houver erro qualquer, não mova o arquivo"
-        # Se a API falhar, o summary é "". Isso pode ser considerado um "erro parcial".
-        # Para garantir que ele possa tentar de novo o resumo, NÃO vamos arquivar.
-        
         if not summary:
-             print(f"{Colors.WARNING}⚠ [SEM RESUMO] {filename} -> Salvo (SRT mantido).{Colors.ENDC}")
-             # success continua False
+             msg = f"{Colors.WARNING}⚠ [SEM RESUMO] {filename} -> Salvo (SRT mantido).{Colors.ENDC}"
         else:
              success = True
+             msg = f"{Colors.GREEN}✓ [OK] {filename} -> {output_filename}{Colors.ENDC}"
         
-        # Formata a data se for YYYYMMDD
         date_str = meta['date']
         if len(date_str) == 8 and date_str.isdigit():
             date_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
 
-        # Prepara o conteúdo final
         final_content = (
             f"--- METADADOS DO DOCUMENTO ---\n"
             f"DATA: {date_str}\n"
@@ -217,13 +213,11 @@ def process_file(filename, current_dir):
         with open(output_filename, 'w', encoding='utf-8') as f_out:
             f_out.write(final_content)
             
-        print(f"{Colors.GREEN}✓ [OK] {filename} -> {output_filename}{Colors.ENDC}")
-
-        return filename, success
+        return filename, success, msg
             
     except Exception as e:
-        print(f"{Colors.FAIL}✖ [ERRO] {filename}: {e}{Colors.ENDC}")
-        return filename, False
+        msg = f"{Colors.FAIL}✖ [ERRO] {filename}: {e}{Colors.ENDC}"
+        return filename, False, msg
 
 def main():
     # Define o diretório de trabalho como o diretório atual
@@ -240,21 +234,21 @@ def main():
     print(f"{Colors.BLUE}Encontrados {len(srt_files)} arquivos .srt. Iniciando processamento paralelo (max 5 threads)...{Colors.ENDC}")
 
     success_files = []
+    processed_count = 0
+    total_files = len(srt_files)
     
-    # Utiliza ThreadPoolExecutor para processar arquivos em paralelo
-    # Isso acelera drasticamente pois as chamadas de API são I/O bound
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        # Mapeia a função process_file para cada arquivo na lista
-        futures = [executor.submit(process_file, filename, current_dir) for filename in srt_files]
+        futures = {executor.submit(process_file, filename, current_dir): filename for filename in srt_files}
         
-        # Aguarda conclusão e coleta resultados
         for future in concurrent.futures.as_completed(futures):
+            processed_count += 1
             try:
-                fname, success = future.result()
+                fname, success, msg = future.result()
+                print(f"[{processed_count}/{total_files}] {msg}", flush=True)
                 if success:
                     success_files.append(fname)
             except Exception as e:
-                print(f"{Colors.FAIL}Erro na thread: {e}{Colors.ENDC}")
+                print(f"{Colors.FAIL}[{processed_count}/{total_files}] Erro na thread: {e}{Colors.ENDC}", flush=True)
 
     print(f"{Colors.GREEN}\n--- Processamento concluído. Iniciando Arquivamento ---{Colors.ENDC}")
     

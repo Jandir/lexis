@@ -16,15 +16,24 @@ Processa arquivos `.srt` individualmente usando a IA do Google Gemini.
     - **Arquivamento Seguro**: Move os `.srt` originais para a pasta `archive` **apenas se** o processamento for bem-sucedido e o arquivo `.txt` final existir.
 - 🤖 **Metadados**: Tenta extrair ID e Título de arquivos `.info.json` (se existirem).
 
-### 2. `lexis-join.py` (Offline ⚡)
-Consolida múltiplos arquivos `.txt` (gerados pelo `lexis.py`) em "volumes" grandes.
+- 🤖 **Metadados**: Tenta extrair ID e Título de arquivos `.info.json` (se existirem).
+
+### 2. `lexis-chunk.py` (IA Structuring 🧠) 
+**Novo!** Focado em estruturar o conteúdo para o NotebookLM.
 
 **Funcionalidades:**
-- 🚀 **100% Offline**: Não consome API nem requer internet. Reutiliza os resumos já gerados pelo `lexis.py`.
-- 📚 **Volumes Inteligentes**: Agrupa vídeos até atingir ~2MB (ponto ideal para LLMs).
-- 🧠 **Coletânea de Resumos**: O cabeçalho de cada volume contém todos os resumos dos vídeos incluídos nele.
-- 🛡️ **Integridade**: Garante que um vídeo nunca seja dividido pela metade entre dois volumes.
-- 📂 **Preservação**: Não move nem apaga seus arquivos `.txt` originais.
+- 📝 **Chunking Inteligente**: Usa o modelo `gemini-2.0-flash` para reescrever a transcrição em blocos lógicos com Títulos e Subtítulos Markdown.
+- 📐 **Estrutura Definida**: Transforma o texto corrido em um documento legível, ideal para RAG.
+- 🏷️ **Metadados**: Cabeçalho rico com Data, Título e ID.
+
+### 3. `lexis-join.py` (Offline ⚡)
+Consolida múltiplos arquivos `.txt` e `.srt` em "volumes" grandes para o NotebookLM.
+
+**Funcionalidades:**
+- 🚀 **100% Offline**: Não consome API nem requer internet. Processa tanto legendas brutas (desduplicando-as) quanto transcrições geradas pelo `lexis.py`.
+- 📚 **Volumes Inteligentes**: Agrupa vídeos agnósticamente até atingir ~1.8MB (ponto ideal de performance e janela de contexto estendida no NotebookLM).
+- 🛡️ **Integridade e Metadados**: Garante que um vídeo nunca seja dividido pela metade entre dois volumes e acopla metadados originais (Data, Título, ID) puxados dos `.info.json`.
+- 📂 **Preservação e Organização**: Mantém intactos os arquivos originais e salva todos os volumes prontos na pasta centralizadora `volumes_notebooklm/`.
 
 ## Configuração
 
@@ -57,7 +66,22 @@ O script procura automaticamente por um arquivo `.env` **na mesma pasta do scrip
 
 ## Uso
 
-### Passo 1: Processar Legendas (`lexis.py`)
+## Uso
+
+### Configuração do Alias (Recomendado)
+Para facilitar o uso, crie um alias para o `lexis-chunk`:
+1. Execute o script de ajuda:
+   ```bash
+   ./setup_alias.sh
+   ```
+2. Siga as instruções para adicionar ao seu `.zshrc`.
+
+Depois, você pode rodar apenas:
+```bash
+lexis-chunk
+```
+
+### Passo 1: Processar Legendas (`lexis-chunk.py` ou `lexis.py`)
 Navegue até a pasta onde estão seus arquivos `.srt` e rode:
 
 ```bash
@@ -70,16 +94,18 @@ O script irá:
 3. Mover os `.srt` processados para uma pasta `archive/`.
 
 ### Passo 2: Consolidar Volumes (`lexis-join.py`)
-Para juntar os textos em grandes volumes para o NotebookLM:
+Para juntar os textos ou legendas cruas em grandes volumes otimizados para o NotebookLM:
 
 ```bash
 python /caminho/para/lexis-join.py
 ```
 
 O script irá:
-1. Varrer a pasta atual e subpastas.
-2. Criar arquivos `CONSOLIDADO_NomeDoCanal_VOL_001.txt`, `VOL_002.txt`, etc.
-3. Manter seus arquivos `.txt` originais intactos.
+1. Varrer a pasta atual e subpastas atrás de arquivos de vídeo/legenda.
+2. Agrupar os textos mesclando metadados num grande pacote inteligente.
+3. Criar arquivos `CONSOLIDADO_NomeDoCanal_VOL_001.txt`, `VOL_002.txt`, etc.
+4. Salvar todos os volumes gerados na pasta de destino final `volumes_notebooklm/`.
+5. Manter seus arquivos `.txt` e `.srt` originais intactos.
 
 ## Estrutura de Arquivos
 
